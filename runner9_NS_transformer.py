@@ -30,10 +30,9 @@ if __name__ == '__main__':
     
     ##Model save path: checkpoints, pre-trained conditional network model save path: pretrain_checkpoints
     parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
-    parser.add_argument('--pretrain_checkpoints', type=str, default='../../../pretrain_checkpoints/', help='location of condition model checkpoints')
+    parser.add_argument('--pretrain_checkpoints', type=str, default='./pretrain_checkpoints/', help='location of condition model checkpoints')
      # CART related args
-    parser.add_argument('--diffusion_config_dir', type=str, default='../../../model9_NS_transformer/configs/toy_8gauss.yml',
-                        help='')
+    parser.add_argument('--diffusion_config_dir', type=str, default='./model9_NS_transformer/configs/toy_8gauss.yml', help='')
     
     # forecasting task
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -253,3 +252,4 @@ if __name__ == '__main__':
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.test(setting, test=1)
         torch.cuda.empty_cache()
+
