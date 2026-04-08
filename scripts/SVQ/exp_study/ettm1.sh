@@ -2,13 +2,13 @@
 seq_len=96
 pred_len=192
 model_name=SVQ
-root_path_name=../../../dataset/ETT-small/
+root_path_name=/root/D3U-main/dataset/ETT-small/
 data_path_name=ETTm1.csv
 model_id_name=ETTm1
 data_name=ETTm1
 
 random_seed=2021
-python -u ../../../runner9_NS_transformer.py \
+python -u /root/D3U-main/runner9_NS_transformer.py \
         --is_training \
         --seed $random_seed \
         --root_path $root_path_name \
