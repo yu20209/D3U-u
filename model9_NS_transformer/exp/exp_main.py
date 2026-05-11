@@ -87,6 +87,85 @@ class HRD3UCheckpointWrapper(nn.Module):
             state["residual_head"] = self.residual_head.state_dict(*args, **kwargs)
         return state
 
+#
+class ResidualDiagnostics:
+    def __init__(self):
+        self.residual_list = []
+        self.mu_list = []
+        self.sigma_list = []
+        self.z_list = []
+        self.y_list = []
+        self.y_base_list = []
+
+    @torch.no_grad()
+    def update(self, y, y_base, mu, sigma):
+        """
+        y:      [B, pred_len, C]
+        y_base: [B, pred_len, C]
+        mu:     [B, pred_len, C]
+        sigma:  [B, pred_len, C]
+        """
+        residual = y - y_base
+        z = (residual - mu) / (sigma + 1e-8)
+
+        self.residual_list.append(residual.detach().cpu().reshape(-1))
+        self.mu_list.append(mu.detach().cpu().reshape(-1))
+        self.sigma_list.append(sigma.detach().cpu().reshape(-1))
+        self.z_list.append(z.detach().cpu().reshape(-1))
+        self.y_list.append(y.detach().cpu().reshape(-1))
+        self.y_base_list.append(y_base.detach().cpu().reshape(-1))
+
+    def summarize(self, prefix="Residual Diagnostics"):
+        if len(self.residual_list) == 0:
+            print("[ResidualDiagnostics] No data collected.")
+            return
+
+        residual = torch.cat(self.residual_list)
+        mu = torch.cat(self.mu_list)
+        sigma = torch.cat(self.sigma_list)
+        z = torch.cat(self.z_list)
+        y = torch.cat(self.y_list)
+        y_base = torch.cat(self.y_base_list)
+
+        y_base_plus_mu = y_base + mu
+
+        mse_base = torch.mean((y - y_base) ** 2).item()
+        mae_base = torch.mean(torch.abs(y - y_base)).item()
+
+        mse_mu = torch.mean((y - y_base_plus_mu) ** 2).item()
+        mae_mu = torch.mean(torch.abs(y - y_base_plus_mu)).item()
+
+        abs_residual = torch.abs(residual)
+        corr = torch.mean(
+            (abs_residual - abs_residual.mean()) *
+            (sigma - sigma.mean())
+        ) / (
+            torch.std(abs_residual) * torch.std(sigma) + 1e-8
+        )
+
+        print("=" * 80)
+        print(prefix)
+        print("-" * 80)
+        print(f"residual mean: {residual.mean().item():.6f}")
+        print(f"residual std : {residual.std().item():.6f}")
+        print(f"mu_r mean    : {mu.mean().item():.6f}")
+        print(f"mu_r std     : {mu.std().item():.6f}")
+        print(f"sigma_r mean : {sigma.mean().item():.6f}")
+        print(f"sigma_r std  : {sigma.std().item():.6f}")
+        print(f"sigma_r min  : {sigma.min().item():.6f}")
+        print(f"sigma_r max  : {sigma.max().item():.6f}")
+        print(f"z mean       : {z.mean().item():.6f}")
+        print(f"z std        : {z.std().item():.6f}")
+        print(f"corr(|residual|, sigma_r): {corr.item():.6f}")
+        print("-" * 80)
+        print(f"MSE(y_base, y)        : {mse_base:.6f}")
+        print(f"MAE(y_base, y)        : {mae_base:.6f}")
+        print(f"MSE(y_base + mu_r, y) : {mse_mu:.6f}")
+        print(f"MAE(y_base + mu_r, y) : {mae_mu:.6f}")
+        print(f"MSE improvement       : {(mse_base - mse_mu) / (mse_base + 1e-8) * 100:.2f}%")
+        print(f"MAE improvement       : {(mae_base - mae_mu) / (mae_base + 1e-8) * 100:.2f}%")
+        print("=" * 80)
+#
 
 class Exp_Main(Exp_Basic):
     def __init__(self, args):
@@ -544,7 +623,7 @@ class Exp_Main(Exp_Basic):
         total_samples = 0.0
         sum_crps = 0.0
         sum_crps_sum = 0.0
-
+        diag = ResidualDiagnostics()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
@@ -558,10 +637,19 @@ class Exp_Main(Exp_Basic):
                 mu_r, sigma_r = None, None
                 if getattr(self.args, "use_hrd3u", False) and self.residual_head is not None and self.args.bias and not self.args.bias_y_0:
                     mu_r, sigma_r = self.residual_head(enc_out)
+                    y_true = batch_y[:, -self.args.pred_len:, :]
+
+                    diag.update(
+                        y=y_true.detach(),
+                        y_base=y_T_mean.detach(),
+                        mu=mu_r.detach(),
+                        sigma=sigma_r.detach()
+                    )
 
                 gen_y_box = []
                 gen_y_bias_box = []
-
+            
+        
                 for _ in range(self.model.diffusion_config.testing.n_z_samples_depart):
                     repeat_n = int(
                         self.model.diffusion_config.testing.n_z_samples /
@@ -666,7 +754,9 @@ class Exp_Main(Exp_Basic):
                         i, len(test_loader), (time.time() - minibatch_sample_start) / 60
                     ))
                     minibatch_sample_start = time.time()
-
+                    
+        if getattr(self.args, "use_hrd3u", False):
+            diag.summarize(prefix=f"Residual Diagnostics on TEST: {setting}")
         print('total_samples', total_samples)
         avg_crps = sum_crps / total_samples
         mse_total = total_mse / total_samples
