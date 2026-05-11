@@ -136,9 +136,8 @@ if __name__ == '__main__':
     parser.add_argument('--use_multi_gpu', type=bool, default=False, help='use multiple gpus')
     parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
     parser.add_argument('--seed', type=int, default=2021, help='random seed')
-
-
-
+    
+    
 
     # Some args for Ax (all about diffusion part)
     parser.add_argument('--timesteps', type=int, default=1000, help='')
@@ -150,6 +149,36 @@ if __name__ == '__main__':
     parser.add_argument('--parameterization', type=str, default="noise", help='')
     parser.add_argument('--bias', action='store_true', help='')
     parser.add_argument('--use_pretraining_condition', action='store_true', help='')
+
+    #均值
+    parser.add_argument('--use_hrd3u', action='store_true',
+                        help='Use heteroscedastic residual D3U: r = mu_r + sigma_r * z, diffusion learns z.')
+    parser.add_argument('--pretrain_residual_head', action='store_true',
+                        help='Pretrain residual location-scale head with Gaussian NLL before diffusion training.')
+    parser.add_argument('--freeze_residual_head_after_pretrain', action='store_true',
+                        help='Freeze residual head after pretraining; recommended for the first stable version.')
+    parser.add_argument('--residual_head_epochs', type=int, default=10,
+                        help='Epochs for residual location-scale head pretraining.')
+    parser.add_argument('--residual_head_patience', type=int, default=3,
+                        help='Early stopping patience for residual head pretraining.')
+    parser.add_argument('--residual_head_hidden', type=int, default=256,
+                        help='Hidden size of residual location-scale head.')
+    parser.add_argument('--residual_head_dropout', type=float, default=0.1,
+                        help='Dropout of residual location-scale head.')
+    parser.add_argument('--residual_head_lr', type=float, default=0.0001,
+                        help='Learning rate for residual location-scale head.')
+    parser.add_argument('--residual_head_weight_decay', type=float, default=0.0001,
+                        help='Weight decay for residual location-scale head.')
+    parser.add_argument('--residual_sigma_min', type=float, default=1e-3,
+                        help='Minimum residual scale for numerical stability.')
+    parser.add_argument('--residual_sigma_max', type=float, default=10.0,
+                        help='Maximum residual scale to avoid over-wide intervals.')
+    parser.add_argument('--residual_mu_clip', type=float, default=5.0,
+                        help='Clip residual mean correction with mu_clip * tanh(raw / mu_clip).')
+    parser.add_argument('--residual_z_reg', type=float, default=0.0,
+                        help='Optional weak regularization that keeps standardized residual close to zero mean and unit std.')
+    parser.add_argument('--residual_locscale_weight', type=float, default=0.0,
+                        help='Optional joint-training NLL weight for residual location-scale head.')
 
 
 
@@ -252,4 +281,3 @@ if __name__ == '__main__':
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.test(setting, test=1)
         torch.cuda.empty_cache()
-
